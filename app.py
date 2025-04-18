@@ -7,18 +7,19 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
 from twilio.rest import Client
+from guidelines import generate_guidelines
 import numpy as np
-import openai  # Make sure to install openai package
-import os  
+import os
 
 # 1) Fetch live air‐quality from OpenWeatherMap
-API_KEY = 'your_weather_api_key_here'
-LAT, LON = '13.0827', '80.2707'  # Updated to Chennai coordinates
+API_KEY = 'weather_Api'
+LAT, LON = '13.0827', '80.2707'  # Chennai coordinates
 url = f"http://api.openweathermap.org/data/2.5/air_pollution?lat={LAT}&lon={LON}&appid={API_KEY}"
 resp = requests.get(url).json()
 live_aqi = resp['list'][0]['main']['aqi']
 live_components = resp['list'][0]['components']
-print(resp)  # Add this line to check the response from the API
+
+print(resp)  # Check response
 print(f"Live AQI Level: {live_aqi}")
 print("Live pollutant concentrations (µg/m³):")
 for p, v in live_components.items():
@@ -38,17 +39,14 @@ for col in numeric_cols:
     data[col] = pd.to_numeric(data[col], errors='coerce')
     data[col] = data[col].fillna(data[col].mean())
 
-# drop unused columns
-data.drop(columns=['Date','Time','Unnamed: 15','Unnamed: 16'], inplace=True, errors='ignore')
+data.drop(columns=['Date', 'Time', 'Unnamed: 15', 'Unnamed: 16'], inplace=True, errors='ignore')
 
 # 3) Prepare features & target
 X = data[numeric_cols]
 y = data['CO(GT)']
 
 # 4) Train/test split & scaling
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42
-)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled  = scaler.transform(X_test)
@@ -72,70 +70,44 @@ train_r2 = r2_score(y_train, y_train_pred)
 test_r2  = r2_score(y_test,  y_test_pred)
 train_mse = mean_squared_error(y_train, y_train_pred)
 test_mse  = mean_squared_error(y_test,  y_test_pred)
+
 print(f"\nModel evaluation:")
 print(f"  Train R²: {train_r2:.4f}, Train MSE: {train_mse:.2f}")
 print(f"  Test  R²: {test_r2:.4f}, Test  MSE: {test_mse:.2f}")
 
-# 7) Send SMS alert if live AQI exceeds threshold
-account_sid = 'twilio_account_sid'  # Replace with your Twilio account SID
-auth_token  = 'twilio_auth_token'  # Replace with your Twilio auth token    
-client = Client(account_sid, auth_token)
+# 7) Send SMS + Get Guidelines if AQI exceeds threshold
+THRESHOLD_AQI = 1  # Customize this value
 
-THRESHOLD_AQI = 1  # set your AQI threshold
 if live_aqi > THRESHOLD_AQI:
+    account_sid = 'accsid'
+    auth_token  = 'authtoken'
+    client = Client(account_sid, auth_token)
+
     msg = client.messages.create(
         body=f"⚠ Live AQI is {live_aqi} (threshold {THRESHOLD_AQI})",
-        from_='‪+19xxxxxxxxxx‬',
-        to='‪+91xxxxxxxxxx‬'
+        from_='‪+19xxxxxxxxx‬',
+        to='‪+91xxxxxxxx'
     )
     print(f"SMS alert sent: {msg.sid}")
 
-    # 8) Use OpenAI API to generate guidelines for survival and precautions
-    # Use OpenAI's new API format
-# Set your OpenAI API key
-client = openai.OpenAI(api_key="your_openai_api_key_here")
-# Set OpenAI API key
+    # 8) Generate Guidelines using external function
+    print("\nAI-Generated Guidelines:")
+    print(generate_guidelines(live_aqi))
+else:
+    print("\nAQI is safe. No alert needed.")
 
-# Prompt for ChatGPT
-prompt = (
-    f"The air quality index (AQI) is currently {live_aqi}, which is above the safe limit. "
-    "Please provide simple and effective safety guidelines for the public during this high pollution level."
-)
-
-# Call the ChatGPT model
-response = client.chat.completions.create(
-    model="gpt-3.5-turbo",
-    messages=[
-        {"role": "system", "content": "You are an environmental safety advisor."},
-        {"role": "user", "content": prompt}
-    ],
-    max_tokens=150,
-    temperature=0.7,
-)
-
-guidelines = response.choices[0].message.content.strip()
-print("\nGuidelines for surviving high pollution:")
-print(guidelines)
-
-# 9) Generate & save heatmap (using a fixed location for demonstration)
-# Jitter logic for surrounding area
+# 9) Generate & save heatmap
 lat_center, lon_center = float(LAT), float(LON)
-n = len(data)  # number of data points
+n = len(data)
 
-lat_jitter = np.random.normal(loc=0, scale=0.02, size=n)  # ~2.2 km offset
+lat_jitter = np.random.normal(loc=0, scale=0.02, size=n)
 lon_jitter = np.random.normal(loc=0, scale=0.02, size=n)
 
-# Generate the heat data with jittered lat/lon
-data['Latitude']  = lat_center + lat_jitter
+data['Latitude'] = lat_center + lat_jitter
 data['Longitude'] = lon_center + lon_jitter
 heat_data = data[['Latitude', 'Longitude', 'CO(GT)']].values.tolist()
 
-# Create map centered around Chennai
 m = folium.Map(location=[lat_center, lon_center], zoom_start=10)
-
-# Add heatmap to the map
 HeatMap(heat_data, radius=8, blur=12).add_to(m)
-
-# Save the heatmap as HTML
 m.save('air_quality_heatmap_chennai.html')
-print("✅ Heatmap for Chennai saved as 'air_quality_heatmap_chennai.html'")
+print("Heatmap for Chennai saved as 'air_quality_heatmap_chennai.html'")
