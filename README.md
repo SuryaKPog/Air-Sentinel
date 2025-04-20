@@ -41,3 +41,5 @@ The system also generates **precautionary guidelines** using OpenAI and visualiz
 
 - [UCI Air Quality Dataset](https://archive.ics.uci.edu/ml/datasets/Air+Quality)
 - [Kaggle Air Quality Data](https://www.kaggle.com/datasets)
+
+Frontend to be updated soon
