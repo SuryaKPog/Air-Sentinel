@@ -9,7 +9,7 @@ from sklearn.metrics import mean_squared_error, r2_score
 from twilio.rest import Client
 from guidelines import generate_guidelines
 import numpy as np
-import
+import os
 
 # 1) Fetch live air‐quality from OpenWeatherMap
 API_KEY = 'weather_Api'
